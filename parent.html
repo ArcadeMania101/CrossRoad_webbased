@@ -54,6 +54,9 @@
       function addMana() {
         mana += 100;
         manaLabel.innerText = 'Mana: ' + mana;
+        // --- PUSH event กลับเข้าเกมทันที! ---
+        const iframe = document.getElementById('gameframe');
+        iframe.contentWindow.postMessage({ type: 'updateMana', mana: mana }, '*');
       }
     </script>
 </body>
