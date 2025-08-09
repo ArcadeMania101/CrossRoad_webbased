@@ -37,7 +37,7 @@
   const iframe = document.getElementById('gameframe');
 
   // DEV: ใช้ '*' ได้ / PROD: ใช้ origin จริงของเกม
-  const GAME_ORIGIN = new URL(iframe.getAttribute('src'), location.href).origin; // ex. https://youruser.github.io
+  const GAME_ORIGIN = new URL(iframe.getAttribute('src'), location.href).origin;
 
   function updateParentLabel() {
     manaLabel.textContent = String(mana);
@@ -109,18 +109,32 @@
       // ตอบกลับผลอนุมัติ
       event.source.postMessage({ type: 'manaUpdated', approved, mana }, event.origin);
       log(`[SEND] to Game: manaUpdated approved=${approved} mana=${mana}`);
+      return;
+    }
+
+    // NEW: credit from game (เพิ่มพลังเมื่อชนะ แล้วส่งค่าใหม่กลับไป sync UI เกม)
+    if (data.type === 'creditMana') {
+      const amount = Number(data.amount) || 0;
+      mana += amount;
+      updateParentLabel();
+
+      event.source.postMessage({ type: 'updateMana', mana }, event.origin);
+      log(`[SEND] to Game: updateMana=${mana} (credit ${amount})`);
+      return;
     }
 
     if (data.type === 'getMana') {
       // เกมขอ pull → ส่งค่า parent ไปให้
       event.source.postMessage({ type: 'updateMana', mana }, event.origin);
       log(`[SEND] to Game: updateMana=${mana} (respond to getMana)`);
+      return;
     }
 
     if (data.type === 'updateMana') {
       // เกม push ค่าของมันกลับมา (กรณีที่ฝั่งเกมเลือกจะส่ง)
       gameManaLabel.textContent = String(data.mana);
       log(`[UI] Last Game Mana updated to: ${data.mana}`);
+      return;
     }
   });
 </script>
