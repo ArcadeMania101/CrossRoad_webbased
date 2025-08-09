@@ -11,53 +11,31 @@
 </head>
 <body>
     <h2>Mockup Parent - Godot Iframe Integration</h2>
-    <iframe id="gameframe" src="index.html" width="900" height="600"></iframe>
-    <div style="margin-top:20px;">
-        <button onclick="addMana()">เติม Mana</button>
-        <span id="manaLabel"></span>
-    </div>
+<iframe id="gameframe" src="game/index.html" width="900" height="600"></iframe>
+<script>
+  let mana = 1000;
+  const manaLabel = document.getElementById('manaLabel');
 
-    <script>
-      let mana = 1000;
-      const manaLabel = document.getElementById('manaLabel');
-      manaLabel.innerText = 'Mana: ' + mana;
+  window.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.type === 'requestMana') {
+      const ok = mana >= data.amount;
+      if (ok) mana -= data.amount;
+      event.source.postMessage({ type: 'manaUpdated', approved: ok, mana }, '*');
+      manaLabel.textContent = 'Mana: ' + mana;
+    }
+    if (data.type === 'getMana') {
+      event.source.postMessage({ type: 'updateMana', mana }, '*');
+    }
+  });
 
-      // ฟัง event จาก iframe
-      window.addEventListener('message', function(event) {
-        // --- Production Safety! ---
-        // เช็ค origin ก่อนตอบกลับ (ตัวอย่าง: event.origin === "https://yourgame.com")
-        // if (event.origin !== "http://localhost:8000") return;
-
-        if (event.data && event.data.type === 'requestMana') {
-          let amount = event.data.amount;
-          if (mana >= amount) {
-            mana -= amount;
-            event.source.postMessage(
-              { type: 'manaUpdated', approved: true, mana: mana },
-              '*' // สำหรับ production ให้ใช้ origin แทน '*'
-            );
-          } else {
-            event.source.postMessage(
-              { type: 'manaUpdated', approved: false, mana: mana },
-              '*'
-            );
-          }
-          manaLabel.innerText = 'Mana: ' + mana;
-        }
-        // สำหรับให้ iframe ขอ sync ค่าปัจจุบัน (optional)
-        if (event.data && event.data.type === 'getMana') {
-          event.source.postMessage({ type: 'updateMana', mana: mana }, '*');
-        }
-      });
-
-      // ปุ่มเติม mana
-      function addMana() {
-        mana += 100;
-        manaLabel.innerText = 'Mana: ' + mana;
-        // --- PUSH event กลับเข้าเกมทันที! ---
-        const iframe = document.getElementById('gameframe');
-        iframe.contentWindow.postMessage({ type: 'updateMana', mana: mana }, '*');
-      }
-    </script>
+  function addMana() {
+    mana += 100;
+    manaLabel.textContent = 'Mana: ' + mana;
+    // push เข้ากรอบเกมทันที
+    document.getElementById('gameframe')
+      .contentWindow.postMessage({ type: 'updateMana', mana }, '*');
+  }
+</script>
 </body>
 </html>
