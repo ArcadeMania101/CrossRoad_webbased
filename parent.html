@@ -30,92 +30,86 @@
 
   <div class="log" id="log"></div>
 
-  <script>
-    // ------------------------
-    // Parent-side "wallet"
-    // ------------------------
-    let mana = 1000; // ค่าเริ่ม mock
-    const manaLabel = document.getElementById('manaLabel');
-    const gameManaLabel = document.getElementById('gameManaLabel');
-    const iframe = document.getElementById('gameframe');
-    const GAME_ORIGIN = '*'; // DEV: ใช้ '*' ไปก่อน; PROD ใส่ origin ของเกมจริง
+<script>
+  let mana = 1000;
+  const manaLabel = document.getElementById('manaLabel');
+  const gameManaLabel = document.getElementById('gameManaLabel');
+  const iframe = document.getElementById('gameframe');
+  const GAME_ORIGIN = '*';
 
-    function updateParentLabel() {
-      manaLabel.textContent = String(mana);
-    }
+  function updateParentLabel() {
+    manaLabel.textContent = String(mana);
+  }
+  updateParentLabel();
+
+  function log(msg) {
+    const el = document.getElementById('log');
+    const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    console.log(line); // ✅ log ไป console
+    el.textContent = line + '\n' + el.textContent;
+  }
+
+  // ------------------------
+  // Buttons
+  // ------------------------
+  function addMana(amount) {
+    mana += amount;
     updateParentLabel();
+    log(`Parent +${amount} mana → ${mana}`);
+  }
 
-    function log(msg) {
-      const el = document.getElementById('log');
-      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
-    }
+  function clearMana() {
+    mana = 0;
+    updateParentLabel();
+    log(`Parent cleared mana → ${mana}`);
+  }
 
-    // ------------------------
-    // Buttons
-    // ------------------------
-    function addMana(amount) {
-      mana += amount;
+  function pushToGame() {
+    log(`[SEND] to Game: updateMana=${mana}`);
+    iframe.contentWindow.postMessage({ type: 'updateMana', mana }, GAME_ORIGIN);
+  }
+
+  function pullFromGame() {
+    log(`[SEND] to Game: getMana`);
+    iframe.contentWindow.postMessage({ type: 'getMana' }, GAME_ORIGIN);
+  }
+
+  // ------------------------
+  // Listener รับข้อความจากเกม
+  // ------------------------
+  window.addEventListener('message', (event) => {
+    console.log('[Parent] raw event:', event); // ✅ ดูดิบๆ ทั้ง event
+    const data = event.data || {};
+    if (!data.type) return;
+
+    log(`[RECV] from Game: ${JSON.stringify(data)}`);
+
+    if (data.type === 'requestMana') {
+      const amount = Number(data.amount) || 0;
+      const approved = mana >= amount;
+      if (approved) mana -= amount;
       updateParentLabel();
-      log(`Parent +${amount} mana → ${mana}`);
+
+      log(`[SEND] to Game: manaUpdated approved=${approved} mana=${mana}`);
+      event.source.postMessage(
+        { type: 'manaUpdated', approved, mana },
+        event.origin || GAME_ORIGIN
+      );
     }
 
-    function clearMana() {
-      mana = 0;
-      updateParentLabel();
-      log(`Parent cleared mana → ${mana}`);
+    if (data.type === 'getMana') {
+      log(`[SEND] to Game: updateMana=${mana} (respond to getMana)`);
+      event.source.postMessage(
+        { type: 'updateMana', mana },
+        event.origin || GAME_ORIGIN
+      );
     }
 
-    // Push ค่า parent mana เข้าเกม (เกมจะรับผ่าน 'updateMana')
-    function pushToGame() {
-      iframe.contentWindow.postMessage({ type: 'updateMana', mana }, GAME_ORIGIN);
-      log(`Push → Game: updateMana=${mana}`);
+    if (data.type === 'updateMana') {
+      gameManaLabel.textContent = String(data.mana);
+      log(`[UI] Last Game Mana updated to: ${data.mana}`);
     }
-
-    // ขอให้เกม sync ค่า (เกมจะส่งกลับผ่าน 'updateMana')
-    function pullFromGame() {
-      iframe.contentWindow.postMessage({ type: 'getMana' }, GAME_ORIGIN);
-      log('Pull ← Game: getMana');
-    }
-
-    // ------------------------
-    // Listener รับข้อความจากเกม
-    // ------------------------
-    window.addEventListener('message', (event) => {
-      // NOTE: PROD ควรเช็ค origin เช่น:
-      // if (event.origin !== 'https://your-game-domain.com') return;
-
-      const data = event.data || {};
-      if (!data.type) return;
-
-      // เกมขอเบิก mana
-      if (data.type === 'requestMana') {
-        const amount = Number(data.amount) || 0;
-        const approved = mana >= amount;
-        if (approved) mana -= amount;
-        updateParentLabel();
-
-        event.source.postMessage(
-          { type: 'manaUpdated', approved, mana },
-          event.origin || GAME_ORIGIN
-        );
-        log(`Game requested: ${amount} → approved=${approved}, parent left=${mana}`);
-      }
-
-      // เกมขอ sync ค่าปัจจุบัน
-      if (data.type === 'getMana') {
-        event.source.postMessage(
-          { type: 'updateMana', mana },
-          event.origin || GAME_ORIGIN
-        );
-        log(`Game pulled; sent updateMana=${mana}`);
-      }
-
-      // เกมอาจ push ค่าของมันกลับมา (ถ้าคุณทำให้เกมส่งมา)
-      if (data.type === 'updateMana') {
-        gameManaLabel.textContent = String(data.mana);
-        log(`Got from Game: updateMana=${data.mana}`);
-      }
-    });
-  </script>
+  });
+</script>
 </body>
 </html>
