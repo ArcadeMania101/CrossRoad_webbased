@@ -6,10 +6,9 @@
   <style>
     body { background: #222; color: #fff; font-family: system-ui, sans-serif; }
     iframe { border: 2px solid #09f; display:block; }
-    .toolbar { margin: 12px 0; display:flex; gap:8px; align-items:center; }
+    .toolbar { margin: 12px 0; display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
     .btn { padding: 8px 12px; background:#0af; color:#002; border:none; border-radius:6px; cursor:pointer; }
     .btn:active { transform: translateY(1px); }
-    #manaLabel { font-weight: 700; margin-left: 8px; }
     .pill { background:#111; border:1px solid #444; padding:4px 8px; border-radius:999px; }
     .log { font-size: 12px; color:#9ad; margin-top:8px; white-space:pre-wrap; }
   </style>
@@ -17,7 +16,8 @@
 <body>
   <h2>Mockup Parent - Godot Iframe Integration</h2>
 
-  <iframe id="gameframe" src="game/index.html" width="900" height="600"></iframe>
+  <!-- เพิ่ม allow="autoplay" เผื่อช่วยเรื่องเสียง (ขึ้นกับ browser policy) -->
+  <iframe id="gameframe" src="game/index.html" width="900" height="600" allow="autoplay"></iframe>
 
   <div class="toolbar">
     <button class="btn" onclick="addMana(100)">+100 Mana</button>
@@ -26,35 +26,52 @@
     <button class="btn" onclick="pullFromGame()">Pull ← Game</button>
     <span class="pill">Parent Mana: <span id="manaLabel">0</span></span>
     <span class="pill">Last Game Mana: <span id="gameManaLabel">?</span></span>
+    <span class="pill">Origin check: <strong id="originMode">DEV</strong></span>
   </div>
 
   <div class="log" id="log"></div>
 
 <script>
-  let mana = 1000;
+  // =========================
+  // Config
+  // =========================
+  // PROD ให้ตั้งเป็น true เพื่อบังคับ origin ตรงกันเท่านั้น
+  const STRICT_ORIGIN_CHECK = false; // DEV=false, PROD=true
+
+  // =========================
+  // State
+  // =========================
+  let mana = 1000; // กระเป๋า mock ฝั่ง parent
   const manaLabel = document.getElementById('manaLabel');
   const gameManaLabel = document.getElementById('gameManaLabel');
   const iframe = document.getElementById('gameframe');
+  const originModeEl = document.getElementById('originMode');
 
-  // DEV: ใช้ '*' ได้ / PROD: ใช้ origin จริงของเกม
+  // origin ของเกม (ถ้า src เป็น relative จะได้ origin เดียวกับ parent)
   const GAME_ORIGIN = new URL(iframe.getAttribute('src'), location.href).origin;
 
-  function updateParentLabel() {
-    manaLabel.textContent = String(mana);
-  }
+  originModeEl.textContent = STRICT_ORIGIN_CHECK ? 'PROD' : 'DEV';
+
+  const updateParentLabel = () => (manaLabel.textContent = String(mana));
   updateParentLabel();
 
-  function log(msg) {
+  const log = (msg) => {
     const el = document.getElementById('log');
     const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
     console.log(line);
     el.textContent = line + '\n' + el.textContent;
+  };
+
+  // =========================
+  // Helper: ส่งข้อความเข้าเกม
+  // =========================
+  function targetOrigin() {
+    return STRICT_ORIGIN_CHECK ? GAME_ORIGIN : '*';
   }
 
-  // ---------- helper ส่งข้อความเข้าเกม ----------
   function postToGame(payload) {
     try {
-      iframe.contentWindow.postMessage(payload, GAME_ORIGIN);
+      iframe.contentWindow.postMessage(payload, targetOrigin());
       log(`[SEND] to Game: ${JSON.stringify(payload)}`);
     } catch (e) {
       console.error('postToGame error:', e);
@@ -62,7 +79,9 @@
     }
   }
 
-  // ---------- ปุ่ม ----------
+  // =========================
+  // Buttons
+  // =========================
   function addMana(amount) {
     mana += amount;
     updateParentLabel();
@@ -83,58 +102,89 @@
     postToGame({ type: 'getMana' });
   }
 
-  // ---------- รอ iframe โหลดแล้วค่อย sync รอบแรก ----------
+  // =========================
+  // Iframe loaded → ขอ sync รอบแรก
+  // =========================
   iframe.addEventListener('load', () => {
     log('[Parent] iframe loaded → request getMana');
     postToGame({ type: 'getMana' });
   });
 
-  // ---------- รับข้อความจากเกม ----------
+  // =========================
+  // รับข้อความจากเกม
+  // =========================
   window.addEventListener('message', (event) => {
-    // ความปลอดภัย (PROD): ป้องกัน origin แปลกปลอม
-    if (event.origin !== GAME_ORIGIN) return;
-
+    // Debug raw event
     console.log('[Parent] raw event:', event);
-    const data = event.data || {};
-    if (!data.type) return;
+
+    // ความปลอดภัย: PROD ให้เช็ค origin
+    if (STRICT_ORIGIN_CHECK && event.origin !== GAME_ORIGIN) {
+      log(`[DROP] origin mismatch from ${event.origin}`);
+      return;
+    }
+
+    const data = event.data;
+    if (!data || typeof data !== 'object') {
+      log('[DROP] message without object payload');
+      return;
+    }
+    if (!data.type) {
+      log('[DROP] message without "type"');
+      return;
+    }
 
     log(`[RECV] from Game: ${JSON.stringify(data)}`);
 
-    if (data.type === 'requestMana') {
-      const amount = Number(data.amount) || 0;
-      const approved = mana >= amount;
-      if (approved) mana -= amount;
-      updateParentLabel();
+    switch (data.type) {
+      // เกมขอหักพลังเพื่อเล่น
+      case 'requestMana': {
+        const amount = Number(data.amount) || 0;
+        const approved = mana >= amount;
+        if (approved) mana -= amount;
+        updateParentLabel();
 
-      // ตอบกลับผลอนุมัติ
-      event.source.postMessage({ type: 'manaUpdated', approved, mana }, event.origin);
-      log(`[SEND] to Game: manaUpdated approved=${approved} mana=${mana}`);
-      return;
-    }
+        event.source.postMessage(
+          { type: 'manaUpdated', approved, mana },
+          STRICT_ORIGIN_CHECK ? event.origin : '*'
+        );
+        log(`[SEND] to Game: manaUpdated approved=${approved} mana=${mana}`);
+        break;
+      }
 
-    // NEW: credit from game (เพิ่มพลังเมื่อชนะ แล้วส่งค่าใหม่กลับไป sync UI เกม)
-    if (data.type === 'creditMana') {
-      const amount = Number(data.amount) || 0;
-      mana += amount;
-      updateParentLabel();
+      // เกมชนะ → ขอเครดิตพลังคืนเข้ากระเป๋า parent
+      case 'creditMana': {
+        const amount = Number(data.amount) || 0;
+        mana += amount;
+        updateParentLabel();
 
-      event.source.postMessage({ type: 'updateMana', mana }, event.origin);
-      log(`[SEND] to Game: updateMana=${mana} (credit ${amount})`);
-      return;
-    }
+        // ส่งยอดล่าสุดกลับให้เกม sync UI
+        event.source.postMessage(
+          { type: 'updateMana', mana },
+          STRICT_ORIGIN_CHECK ? event.origin : '*'
+        );
+        log(`[SEND] to Game: updateMana=${mana} (credit ${amount})`);
+        break;
+      }
 
-    if (data.type === 'getMana') {
-      // เกมขอ pull → ส่งค่า parent ไปให้
-      event.source.postMessage({ type: 'updateMana', mana }, event.origin);
-      log(`[SEND] to Game: updateMana=${mana} (respond to getMana)`);
-      return;
-    }
+      // เกมขอดึงยอดจาก parent
+      case 'getMana': {
+        event.source.postMessage(
+          { type: 'updateMana', mana },
+          STRICT_ORIGIN_CHECK ? event.origin : '*'
+        );
+        log(`[SEND] to Game: updateMana=${mana} (respond to getMana)`);
+        break;
+      }
 
-    if (data.type === 'updateMana') {
-      // เกม push ค่าของมันกลับมา (กรณีที่ฝั่งเกมเลือกจะส่ง)
-      gameManaLabel.textContent = String(data.mana);
-      log(`[UI] Last Game Mana updated to: ${data.mana}`);
-      return;
+      // เกม push ค่า mana ของมันกลับมา (ถ้าเกมเลือกทำ — สำหรับโชว์ใน UI parent)
+      case 'updateMana': {
+        gameManaLabel.textContent = String(data.mana);
+        log(`[UI] Last Game Mana updated to: ${data.mana}`);
+        break;
+      }
+
+      default:
+        log(`[INFO] Unhandled type: ${data.type}`);
     }
   });
 </script>
