@@ -30,19 +30,41 @@
 
   <div class="log" id="log"></div>
 
-<script>
-  let mana = 1000;
+<script type="module">
+// <script>
+  window.addMana = addMana;
+  window.clearMana = clearMana;
+  window.pushToGame = pushToGame;
+  window.pullFromGame = pullFromGame;
+
+  let mana = 0;
+  let address = '0x0000000000000000000000000000000000000193';
   const manaLabel = document.getElementById('manaLabel');
   const gameManaLabel = document.getElementById('gameManaLabel');
   const iframe = document.getElementById('gameframe');
 
   // DEV: ใช้ '*' ได้ / PROD: ใช้ origin จริงของเกม
   const GAME_ORIGIN = new URL(iframe.getAttribute('src'), location.href).origin;
+  console.log('Expected Game Origin:', GAME_ORIGIN);
+
 
   function updateParentLabel() {
     manaLabel.textContent = String(mana);
   }
-  updateParentLabel();
+  // updateParentLabel();
+
+  async function fetchMana() {
+    try {
+      const res = await fetch(`http://localhost:3000/api/getMana/${address}`);
+      const data = await res.json();
+      console.log("Fetched mana:", data);
+      mana = data.mana || 0; // ✅ update global mana
+      updateParentLabel();
+    } catch (err) {
+      console.error("Error fetching mana:", err);
+    }
+  }
+  fetchMana(); 
 
   function log(msg) {
     const el = document.getElementById('log');
@@ -68,6 +90,36 @@
     updateParentLabel();
     log(`Parent +${amount} mana → ${mana}`);
   }
+  // async function addMana(amount) {
+  //   try {
+  //     const res = await fetch('http://localhost:3000/api/addMana', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json'
+  //       },
+  //       body: JSON.stringify({
+  //         address: address,  // use your defined variable here
+  //         amount: amount
+  //       })
+  //     });
+
+  //     if (!res.ok) {
+  //       throw new Error(`Server error: ${res.status}`);
+  //     }
+
+  //     const data = await res.json();
+  //     if (data.success) {
+  //       mana = data.updatedMana; // update mana with server’s value
+  //       updateParentLabel();
+  //       log(`Parent +${amount} mana → ${mana}`);
+  //     } else {
+  //       console.error('Failed to add mana:', data.error);
+  //     }
+
+  //   } catch (err) {
+  //     console.error('Error adding mana:', err);
+  //   }
+  // }
 
   function clearMana() {
     mana = 0;
@@ -96,7 +148,10 @@
 
     console.log('[Parent] raw event:', event);
     const data = event.data || {};
+    console.log(`[Parent] Received message from Game: ${JSON.stringify(data)}`);
     if (!data.type) return;
+
+    console.log(`[Parent] Received message type: ${data.type}`);
 
     log(`[RECV] from Game: ${JSON.stringify(data)}`);
 
