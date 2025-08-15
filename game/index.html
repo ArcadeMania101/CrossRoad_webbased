@@ -165,12 +165,13 @@ const engine = new Engine(GODOT_CONFIG);
 	window.addEventListener("message", (event) => {
 	console.log("[Game] Received message event:", event);
 
-	if (event.origin !== "http://localhost:8000") {
+	if (event.origin !== "http://localhost:8001") {
 		console.warn(`[Game] Ignoring message from unknown origin: ${event.origin}`);
 		return;
 	}
 
 	const data = event.data;
+	console.log("[Game] Message data:", data);
 	if (!data) {
 		console.warn("[Game] Received message with no data");
 		return;

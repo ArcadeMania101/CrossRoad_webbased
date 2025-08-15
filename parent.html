@@ -24,6 +24,7 @@
     <button class="btn" onclick="clearMana()">Clear Mana = 0</button>
     <button class="btn" onclick="pushToGame()">Push → Game</button>
     <button class="btn" onclick="pullFromGame()">Pull ← Game</button>
+    <button class="btn" onclick="testRequestMana(25)">Simulate requestMana 25</button>
     <span class="pill">Parent Mana: <span id="manaLabel">0</span></span>
     <span class="pill">Last Game Mana: <span id="gameManaLabel">?</span></span>
     <span class="pill">Origin check: <strong id="originMode">DEV</strong></span>
@@ -31,7 +32,13 @@
 
   <div class="log" id="log"></div>
 
-<script type="module">
+<!-- <script type="module"> -->
+<script>  
+  console.log('Parent script loaded');
+  // window.addMana = addMana;
+  // window.clearMana = clearMana;
+  // window.pushToGame = pushToGame;
+  // window.pullFromGame = pullFromGame;
   // =========================
   // Config
   // =========================
@@ -41,10 +48,6 @@
   // =========================
   // State
   // =========================
-  window.addMana = addMana;
-  window.clearMana = clearMana;
-  window.pushToGame = pushToGame;
-  window.pullFromGame = pullFromGame;
 
   let mana = 0;
   let address = '0x0000000000000000000000000000000000000193';
@@ -108,36 +111,6 @@
     updateParentLabel();
     log(`Parent +${amount} mana → ${mana}`);
   }
-  // async function addMana(amount) {
-  //   try {
-  //     const res = await fetch('http://localhost:3000/api/addMana', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json'
-  //       },
-  //       body: JSON.stringify({
-  //         address: address,  // use your defined variable here
-  //         amount: amount
-  //       })
-  //     });
-
-  //     if (!res.ok) {
-  //       throw new Error(`Server error: ${res.status}`);
-  //     }
-
-  //     const data = await res.json();
-  //     if (data.success) {
-  //       mana = data.updatedMana; // update mana with server’s value
-  //       updateParentLabel();
-  //       log(`Parent +${amount} mana → ${mana}`);
-  //     } else {
-  //       console.error('Failed to add mana:', data.error);
-  //     }
-
-  //   } catch (err) {
-  //     console.error('Error adding mana:', err);
-  //   }
-  // }
 
   function clearMana() {
     mana = 0;
@@ -146,12 +119,25 @@
   }
 
   function pushToGame() {
+    console.log("pushToGame triggered");
     postToGame({ type: 'updateMana', mana });
+    log('push mana to the game');
   }
 
   function pullFromGame() {
     postToGame({ type: 'getMana' });
   }
+
+  function testRequestMana(amount = 25) {
+  const fakeEvent = new MessageEvent('message', {
+    data: { type: 'requestMana', amount },
+    origin: GAME_ORIGIN,
+    source: window // for testing, window can act as source
+  });
+
+  window.dispatchEvent(fakeEvent);
+}
+
 
   // =========================
   // Iframe loaded → ขอ sync รอบแรก
@@ -175,12 +161,13 @@
     }
 
     const data = event.data;
+    console.log('[Parent] received message:', data);
     if (!data || typeof data !== 'object') {
       log('[DROP] message without object payload');
-      return;
+      return; // Ignore invalid messages
     }
-    if (!data.type) {
-      log('[DROP] message without "type"');
+    if(!data.type){
+      log('[DROP] message without type');
       return;
     }
 
@@ -189,18 +176,43 @@
     switch (data.type) {
       // เกมขอหักพลังเพื่อเล่น
       case 'requestMana': {
-        const amount = Number(data.amount) || 0;
-        const approved = mana >= amount;
-        if (approved) mana -= amount;
-        updateParentLabel();
+        (async () => {
+          const amount = Number(data.amount) || 0;
+          log(`[RECV] requestMana amount=${amount} from game`);
 
-        event.source.postMessage(
-          { type: 'manaUpdated', approved, mana },
-          STRICT_ORIGIN_CHECK ? event.origin : '*'
-        );
-        log(`[SEND] to Game: manaUpdated approved=${approved} mana=${mana}`);
+          try {
+            // Call your backend API
+            const res = await fetch(`http://localhost:3000/api/requestMana`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ address, amount })
+            });
+
+            const result = await res.json(); // expected { success: true, updatedMana: 550 }
+
+            // Update parent mana from API response
+            if (result.success) mana = result.updatedMana;
+            updateParentLabel();
+
+            // Respond back to game
+            event.source.postMessage(
+              { type: 'manaUpdated', approved: result.success, mana },
+              STRICT_ORIGIN_CHECK ? event.origin : '*'
+            );
+
+            log(`[SEND] to Game: manaUpdated approved=${result.success} mana=${mana}`);
+          } catch (err) {
+            console.error('requestMana API error:', err);
+            event.source.postMessage(
+              { type: 'manaUpdated', approved: false, mana },
+              STRICT_ORIGIN_CHECK ? event.origin : '*'
+            );
+            log(`[SEND] to Game: manaUpdated approved=false mana=${mana}`);
+          }
+        })();
         break;
       }
+
 
       // เกมชนะ → ขอเครดิตพลังคืนเข้ากระเป๋า parent
       case 'creditMana': {
