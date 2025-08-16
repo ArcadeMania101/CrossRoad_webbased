@@ -32,13 +32,13 @@
 
   <div class="log" id="log"></div>
 
-<!-- <script type="module"> -->
-<script>  
+<script>
   console.log('Parent script loaded');
   // window.addMana = addMana;
   // window.clearMana = clearMana;
   // window.pushToGame = pushToGame;
   // window.pullFromGame = pullFromGame;
+  // window.testRequestMana = testRequestMana;
   // =========================
   // Config
   // =========================
@@ -106,11 +106,41 @@
   // =========================
   // Buttons
   // =========================
-  function addMana(amount) {
-    mana += amount;
-    updateParentLabel();
-    log(`Parent +${amount} mana → ${mana}`);
-  }
+  // function addMana(amount) {
+  //   mana += amount;
+  //   updateParentLabel();
+  //   log(`Parent +${amount} mana → ${mana}`);
+  // }
+    async function addMana(amount) {
+      try {
+        const res = await fetch('http://localhost:3000/api/addMana', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            address: address,  // use your defined variable here
+            amount: amount
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Server error: ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.success) {
+          mana = data.updatedMana; // update mana with server’s value
+          updateParentLabel();
+          log(`Parent +${amount} mana → ${mana}`);
+        } else {
+          console.error('Failed to add mana:', data.error);
+        }
+
+      } catch (err) {
+        console.error('Error adding mana:', err);
+      }
+    }
 
   function clearMana() {
     mana = 0;

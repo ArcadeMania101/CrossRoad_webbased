@@ -162,35 +162,36 @@ const engine = new Engine(GODOT_CONFIG);
 		initializing = false;
 	}
 
-	window.addEventListener("message", (event) => {
-	console.log("[Game] Received message event:", event);
+	// window.addEventListener("message", (event) => {
+	// console.log("[Game] Received message event:", event);
 
-	if (event.origin !== "http://localhost:8001") {
-		console.warn(`[Game] Ignoring message from unknown origin: ${event.origin}`);
-		return;
-	}
+	// if (event.origin !== "http://localhost:8001") {
+	// 	console.warn(`[Game] Ignoring message from unknown origin: ${event.origin}`);
+	// 	return;
+	// }
 
-	const data = event.data;
-	console.log("[Game] Message data:", data);
-	if (!data) {
-		console.warn("[Game] Received message with no data");
-		return;
-	}
-	if (!data.type) return;
+	// const data = event.data;
+	// console.log("[Game] Message data:", data);
+	// if (!data) {
+	// 	console.warn("[Game] Received message with no data");
+	// 	return;
+	// }
+	// if (!data.type) return;
 
-	console.log("[Game] Message type:", data.type);
+	// console.log("[Game] Message type:", data.type);
+	// console.log("game mana:", window.gameMana);
 
-	if (data.type === "getMana") {
-		console.log("[Game] Requesting mana from parent");
-		const currentMana = window.gameMana || 100;
-		event.source.postMessage({ type: "updateMana", mana: currentMana }, event.origin);
-	}
+	// if (data.type === "getMana") {
+	// 	console.log("[Game] Requesting mana from parent");
+	// 	const currentMana = window.gameMana || 100;
+	// 	event.source.postMessage({ type: "updateMana", mana: currentMana }, event.origin);
+	// }
 
-	if (data.type === "updateMana") {
-		window.gameMana = data.mana;
-		console.log(`[Game] Mana updated from parent: ${data.mana}`);
-	}
-	});
+	// if (data.type === "updateMana") {
+	// 	window.gameMana = data.mana;
+	// 	console.log(`[Game] Mana updated from parent: ${data.mana}`);
+	// }
+	// });
 
 
 	const missing = Engine.getMissingFeatures({
