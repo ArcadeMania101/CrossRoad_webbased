@@ -16,7 +16,7 @@
 <body>
   <h2>Mockup Parent - Godot Iframe Integration</h2>
 
-  <!-- เพิ่ม allow="autoplay" เผื่อช่วยเรื่องเสียง (ขึ้นกับ browser policy) -->
+  <!-- เพิ่ม autoplay เผื่อช่วยเสียง -->
   <iframe id="gameframe" src="game/index.html" width="900" height="600" allow="autoplay"></iframe>
 
   <div class="toolbar">
@@ -27,57 +27,37 @@
     <button class="btn" onclick="testRequestMana(25)">Simulate requestMana 25</button>
     <span class="pill">Parent Mana: <span id="manaLabel">0</span></span>
     <span class="pill">Last Game Mana: <span id="gameManaLabel">?</span></span>
-    <span class="pill">Origin check: <strong id="originMode">DEV</strong></span>
+    <span class="pill">Origin: <strong id="originMode">DEV</strong></span>
   </div>
 
   <div class="log" id="log"></div>
 
 <script>
-  console.log('Parent script loaded');
-  // window.addMana = addMana;
-  // window.clearMana = clearMana;
-  // window.pushToGame = pushToGame;
-  // window.pullFromGame = pullFromGame;
-  // window.testRequestMana = testRequestMana;
   // =========================
   // Config
   // =========================
-  // PROD ให้ตั้งเป็น true เพื่อบังคับ origin ตรงกันเท่านั้น
-  const STRICT_ORIGIN_CHECK = false; // DEV=false, PROD=true
+  // DEV = false (ยอมรับทุก origin), PROD = true (บังคับ origin ตรงกันเท่านั้น)
+  const STRICT_ORIGIN_CHECK = false;
+
+  // API ตั้งไว้ที่นี่ (ระวัง mixed content ถ้าเพจเป็น https)
+  const API_BASE = 'http://localhost:3000';
 
   // =========================
   // State
   // =========================
-
   let mana = 0;
-  let address = '0x0000000000000000000000000000000000000193';
+  const address = '0x0000000000000000000000000000000000000193';
+
   const manaLabel = document.getElementById('manaLabel');
   const gameManaLabel = document.getElementById('gameManaLabel');
   const iframe = document.getElementById('gameframe');
   const originModeEl = document.getElementById('originMode');
 
-  // origin ของเกม (ถ้า src เป็น relative จะได้ origin เดียวกับ parent)
+  // origin ของเกม (ถ้า src เป็น relative จะเท่ากับ origin เดียวกับหน้า parent)
   const GAME_ORIGIN = new URL(iframe.getAttribute('src'), location.href).origin;
-  console.log('Expected Game Origin:', GAME_ORIGIN);
-
-
   originModeEl.textContent = STRICT_ORIGIN_CHECK ? 'PROD' : 'DEV';
 
   const updateParentLabel = () => (manaLabel.textContent = String(mana));
-  // updateParentLabel();
-
-  async function fetchMana() {
-    try {
-      const res = await fetch(`http://localhost:3000/api/getMana/${address}`);
-      const data = await res.json();
-      console.log("Fetched mana:", data);
-      mana = data.mana || 0; // ✅ update global mana
-      updateParentLabel();
-    } catch (err) {
-      console.error("Error fetching mana:", err);
-    }
-  }
-  fetchMana(); 
 
   const log = (msg) => {
     const el = document.getElementById('log');
@@ -87,11 +67,9 @@
   };
 
   // =========================
-  // Helper: ส่งข้อความเข้าเกม
+  // Helper
   // =========================
-  function targetOrigin() {
-    return STRICT_ORIGIN_CHECK ? GAME_ORIGIN : '*';
-  }
+  const targetOrigin = () => (STRICT_ORIGIN_CHECK ? GAME_ORIGIN : '*');
 
   function postToGame(payload) {
     try {
@@ -103,44 +81,41 @@
     }
   }
 
+  async function fetchMana() {
+    try {
+      const res = await fetch(`${API_BASE}/api/getMana/${address}`);
+      const data = await res.json();
+      mana = Number(data?.mana) || 0;
+      updateParentLabel();
+      log(`[API] getMana → ${mana}`);
+    } catch (err) {
+      console.error('Error fetching mana:', err);
+      log('[API][ERROR] getMana failed');
+    }
+  }
+
   // =========================
   // Buttons
   // =========================
-  // function addMana(amount) {
-  //   mana += amount;
-  //   updateParentLabel();
-  //   log(`Parent +${amount} mana → ${mana}`);
-  // }
-    async function addMana(amount) {
-      try {
-        const res = await fetch('http://localhost:3000/api/addMana', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            address: address,  // use your defined variable here
-            amount: amount
-          })
-        });
-
-        if (!res.ok) {
-          throw new Error(`Server error: ${res.status}`);
-        }
-
-        const data = await res.json();
-        if (data.success) {
-          mana = data.updatedMana; // update mana with server’s value
-          updateParentLabel();
-          log(`Parent +${amount} mana → ${mana}`);
-        } else {
-          console.error('Failed to add mana:', data.error);
-        }
-
-      } catch (err) {
-        console.error('Error adding mana:', err);
+  async function addMana(amount) {
+    try {
+      const res = await fetch(`${API_BASE}/api/addMana`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, amount })
+      });
+      const data = await res.json();
+      if (data.success) {
+        mana = Number(data.updatedMana) || 0;
+        updateParentLabel();
+        log(`[API] addMana +${amount} → ${mana}`);
+      } else {
+        log(`[API][ERROR] addMana: ${data.error || 'unknown'}`);
       }
+    } catch (err) {
+      console.error('addMana error:', err);
+      log('[API][ERROR] addMana failed');
     }
+  }
 
   function clearMana() {
     mana = 0;
@@ -149,55 +124,54 @@
   }
 
   function pushToGame() {
-    console.log("pushToGame triggered");
     postToGame({ type: 'updateMana', mana });
-    log('push mana to the game');
   }
 
   function pullFromGame() {
     postToGame({ type: 'getMana' });
   }
 
+  // ✅ แก้ simulate ให้ reply กลับเข้ากรอบเกมได้จริง
   function testRequestMana(amount = 25) {
-  const fakeEvent = new MessageEvent('message', {
-    data: { type: 'requestMana', amount },
-    origin: GAME_ORIGIN,
-    source: window // for testing, window can act as source
-  });
-
-  window.dispatchEvent(fakeEvent);
-}
-
+    const fakeEvent = new MessageEvent('message', {
+      data: { type: 'requestMana', amount },
+      origin: GAME_ORIGIN,
+      // สำคัญ: source = iframe.contentWindow เพื่อให้ event.source.postMessage() ส่งกลับเข้าเกมได้
+      source: iframe.contentWindow
+    });
+    window.dispatchEvent(fakeEvent);
+    log(`[TEST] simulate requestMana ${amount}`);
+  }
 
   // =========================
-  // Iframe loaded → ขอ sync รอบแรก
+  // Iframe loaded → sync แรก
   // =========================
   iframe.addEventListener('load', () => {
     log('[Parent] iframe loaded → request getMana');
     postToGame({ type: 'getMana' });
   });
 
+  // ดึง mana จาก API ตอนเปิดหน้า
+  fetchMana();
+
   // =========================
   // รับข้อความจากเกม
   // =========================
-  window.addEventListener('message', (event) => {
-    // Debug raw event
+  window.addEventListener('message', async (event) => {
     console.log('[Parent] raw event:', event);
 
-    // ความปลอดภัย: PROD ให้เช็ค origin
     if (STRICT_ORIGIN_CHECK && event.origin !== GAME_ORIGIN) {
       log(`[DROP] origin mismatch from ${event.origin}`);
       return;
     }
 
     const data = event.data;
-    console.log('[Parent] received message:', data);
     if (!data || typeof data !== 'object') {
       log('[DROP] message without object payload');
-      return; // Ignore invalid messages
+      return;
     }
-    if(!data.type){
-      log('[DROP] message without type');
+    if (!data.type) {
+      log('[DROP] message without "type"');
       return;
     }
 
@@ -206,60 +180,62 @@
     switch (data.type) {
       // เกมขอหักพลังเพื่อเล่น
       case 'requestMana': {
-        (async () => {
-          const amount = Number(data.amount) || 0;
-          log(`[RECV] requestMana amount=${amount} from game`);
+        const amount = Number(data.amount) || 0;
+        log(`[RECV] requestMana amount=${amount}`);
 
-          try {
-            // Call your backend API
-            const res = await fetch(`http://localhost:3000/api/requestMana`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ address, amount })
-            });
+        try {
+          const res = await fetch(`${API_BASE}/api/requestMana`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, amount })
+          });
+          const result = await res.json(); // { success, updatedMana }
+          if (result.success) mana = Number(result.updatedMana) || 0;
+          updateParentLabel();
 
-            const result = await res.json(); // expected { success: true, updatedMana: 550 }
-
-            // Update parent mana from API response
-            if (result.success) mana = result.updatedMana;
-            updateParentLabel();
-
-            // Respond back to game
-            event.source.postMessage(
-              { type: 'manaUpdated', approved: result.success, mana },
-              STRICT_ORIGIN_CHECK ? event.origin : '*'
-            );
-
-            log(`[SEND] to Game: manaUpdated approved=${result.success} mana=${mana}`);
-          } catch (err) {
-            console.error('requestMana API error:', err);
-            event.source.postMessage(
-              { type: 'manaUpdated', approved: false, mana },
-              STRICT_ORIGIN_CHECK ? event.origin : '*'
-            );
-            log(`[SEND] to Game: manaUpdated approved=false mana=${mana}`);
-          }
-        })();
+          event.source.postMessage(
+            { type: 'manaUpdated', approved: !!result.success, mana },
+            STRICT_ORIGIN_CHECK ? event.origin : '*'
+          );
+          log(`[SEND] to Game: manaUpdated approved=${!!result.success} mana=${mana}`);
+        } catch (err) {
+          console.error('requestMana API error:', err);
+          event.source.postMessage(
+            { type: 'manaUpdated', approved: false, mana },
+            STRICT_ORIGIN_CHECK ? event.origin : '*'
+          );
+          log('[SEND] to Game: manaUpdated approved=false');
+        }
         break;
       }
 
-
-      // เกมชนะ → ขอเครดิตพลังคืนเข้ากระเป๋า parent
+      // เกมชนะ → ขอเครดิตพลังคืน (ถ้ามี endpoint ใช้ที่นี่; ถ้าไม่มี จะบวก local แล้วส่งกลับ)
       case 'creditMana': {
         const amount = Number(data.amount) || 0;
-        mana += amount;
-        updateParentLabel();
+        try {
+          // ถ้ามี API จริง ปลดคอมเมนต์สามบรรทัดล่างนี้
+          // const res = await fetch(`${API_BASE}/api/creditMana`, {
+          //   method: 'POST', headers: { 'Content-Type': 'application/json' },
+          //   body: JSON.stringify({ address, amount })
+          // });
+          // const result = await res.json(), serverMana = Number(result?.updatedMana);
 
-        // ส่งยอดล่าสุดกลับให้เกม sync UI
-        event.source.postMessage(
-          { type: 'updateMana', mana },
-          STRICT_ORIGIN_CHECK ? event.origin : '*'
-        );
-        log(`[SEND] to Game: updateMana=${mana} (credit ${amount})`);
+          // mock (หรือ fallback): บวก local
+          mana += amount;
+
+          updateParentLabel();
+          event.source.postMessage(
+            { type: 'updateMana', mana },
+            STRICT_ORIGIN_CHECK ? event.origin : '*'
+          );
+          log(`[SEND] to Game: updateMana=${mana} (credit ${amount})`);
+        } catch (err) {
+          console.error('creditMana API error:', err);
+          // ในกรณี error คุณอาจแจ้งกลับเกมด้วยก็ได้ (หรือเงียบ)
+        }
         break;
       }
 
-      // เกมขอดึงยอดจาก parent
+      // เกมขอ pull ค่าจาก parent
       case 'getMana': {
         event.source.postMessage(
           { type: 'updateMana', mana },
@@ -269,7 +245,7 @@
         break;
       }
 
-      // เกม push ค่า mana ของมันกลับมา (ถ้าเกมเลือกทำ — สำหรับโชว์ใน UI parent)
+      // เกม push ค่า mana ของมันมา (แค่โชว์ใน UI parent)
       case 'updateMana': {
         gameManaLabel.textContent = String(data.mana);
         log(`[UI] Last Game Mana updated to: ${data.mana}`);
