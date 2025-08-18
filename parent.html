@@ -213,14 +213,17 @@
         const amount = Number(data.amount) || 0;
         try {
           // ถ้ามี API จริง ปลดคอมเมนต์สามบรรทัดล่างนี้
-          // const res = await fetch(`${API_BASE}/api/creditMana`, {
-          //   method: 'POST', headers: { 'Content-Type': 'application/json' },
-          //   body: JSON.stringify({ address, amount })
-          // });
-          // const result = await res.json(), serverMana = Number(result?.updatedMana);
+          const res = await fetch(`${API_BASE}/api/creditMana`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, amount })
+          });
+          const result = await res.json();
+          mana = Number(result?.updatedMana);
+          console.log(`result`, result);
 
           // mock (หรือ fallback): บวก local
-          mana += amount;
+          // console.log(`current Mana`, mana);
+          // mana += amount;
 
           updateParentLabel();
           event.source.postMessage(
